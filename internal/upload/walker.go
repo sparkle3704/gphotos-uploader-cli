@@ -1,6 +1,7 @@
 package upload
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,56 +11,48 @@ import (
 	"github.com/gphotosuploader/gphotos-uploader-cli/internal/log"
 )
 
+const defaultFileListPath = "/content/drive/MyDrive/gphotos-uploader/config-folder/filelist.txt"
+
 // ScanFolder return the list of Items{} to be uploaded. It scans the folder and skip
 // non allowed files (includePatterns & excludePattens).
-func (job *UploadFolderJob) ScanFolder(logger log.Logger) ([]FileItem, error) {
+func (job *UploadFolderJob) ScanFolderFromList(logger log.Logger) ([]FileItem, error) {
 	var result []FileItem
-	err := symwalk.Walk(job.SourceFolder, job.getItemToUploadFn(&result, logger))
-	return result, err
-}
 
-func (job *UploadFolderJob) getItemToUploadFn(reqs *[]FileItem, logger log.Logger) filepath.WalkFunc {
-	return func(fp string, fi os.FileInfo, errP error) error {
-		if fi == nil {
-			return nil
+	fileList, err := os.Open(defaultFileListPath)
+	if err != nil {
+		return nil, err
+	}
+	defer fileList.Close()
+
+	scanner := bufio.NewScanner(fileList)
+	for scanner.Scan() {
+		filePath := strings.TrimSpace(scanner.Text())
+		if filePath == "" {
+			continue
 		}
 
-		relativePath := RelativePath(job.SourceFolder, fp)
+		relativePath := RelativePath(job.SourceFolder, filePath)
 
-		// If a directory is excluded, skip it!
-		if fi.IsDir() {
-			if job.Filter.IsExcluded(relativePath) {
-				logger.Debugf("Skipping excluded directory '%s'.", fp)
-				return filepath.SkipDir
-			}
-			return nil
+		// Skip already uploaded files
+		if job.FileTracker.IsUploaded(filePath) {
+			logger.Debugf("Skipping already uploaded file '%s'.", filePath)
+			continue
 		}
 
-		// check if the item should be uploaded given the include and exclude patterns in the
-		// configuration file. It uses relative Path from the source folder Path to facilitate
-		// then set up of includePatterns and excludePatterns.
+		albumName := job.albumName(relativePath)
+		logger.Debugf("Adding file '%s' to the upload list for album '%s'.", filePath, albumName)
 
-		if !job.Filter.IsAllowed(relativePath) {
-			logger.Debugf("Skipping excluded file '%s'.", fp)
-			return nil
-		}
-
-		// check completed uploads db for previous uploads
-		if job.FileTracker.IsUploaded(fp) {
-			logger.Debugf("Skipping already uploaded file '%s'.", fp)
-			return nil
-		}
-
-		albumName := job.albumName(relativePath, fi.ModTime())
-		logger.Debugf("Adding file '%s' to the upload list for album '%s'.", fp, albumName)
-
-		// set file upload Options depending on folder upload Options
-		*reqs = append(*reqs, FileItem{
-			Path:      fp,
+		result = append(result, FileItem{
+			Path:      filePath,
 			AlbumName: albumName,
 		})
-		return nil
 	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
 
 // RelativePath returns a path relative to the base.

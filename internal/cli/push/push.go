@@ -15,6 +15,8 @@ import (
 	"net/http"
 )
 
+const defaultFileListPath = "/content/drive/MyDrive/gphotos-uploader/config-folder/filelist.txt"
+
 // PushCmd holds the required data for the push cmd
 type PushCmd struct {
 	*flags.GlobalFlags
@@ -88,9 +90,9 @@ func (cmd *PushCmd) Run(cobraCmd *cobra.Command, args []string) error {
 		}
 
 		// get UploadItem{} to be uploaded to Google Photos.
-		itemsToUpload, err := folder.ScanFolder(cli.Logger)
+		itemsToUpload, err := folder.ScanFolderFromList(cli.Logger)
 		if err != nil {
-			cli.Logger.Fatalf("Failed to process location '%s': %s", config.SourceFolder, err)
+			cli.Logger.Fatalf("Failed to process file list '%s': %s", defaultFileListPath, err)
 			continue
 		}
 
