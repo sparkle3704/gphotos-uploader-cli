@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/facebookgo/symwalk"
-
 	"github.com/gphotosuploader/gphotos-uploader-cli/internal/log"
 )
 
@@ -39,7 +37,14 @@ func (job *UploadFolderJob) ScanFolderFromList(logger log.Logger) ([]FileItem, e
 			continue
 		}
 
-		albumName := job.albumName(relativePath)
+		// Get file info for ModTime
+		fi, err := os.Stat(filePath)
+		if err != nil {
+			logger.Debugf("Skipping file '%s': %v", filePath, err)
+			continue
+		}
+
+		albumName := job.albumName(relativePath, fi.ModTime())
 		logger.Debugf("Adding file '%s' to the upload list for album '%s'.", filePath, albumName)
 
 		result = append(result, FileItem{
